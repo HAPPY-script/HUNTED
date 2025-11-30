@@ -5,6 +5,8 @@ local player = Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
 local hrp = char:WaitForChild("HumanoidRootPart")
 
+local specialFolder = workspace:FindFirstChild("NPCs") -- folder đặc biệt
+
 ------------------------------------------------------------
 -- HÀM KIỂM TRA MODEL CÓ PHẢI PLAYER KHÔNG
 ------------------------------------------------------------
@@ -13,29 +15,28 @@ local function isPlayerModel(model)
 end
 
 ------------------------------------------------------------
--- TẠO ESP (Highlight + BillboardGui hiển thị distance)
+-- TẠO ESP CHO MODEL (player, npc, hoặc model đặc biệt)
 ------------------------------------------------------------
-local function createESP(model)
-    if not model:FindFirstChild("HumanoidRootPart") then return end
-    if not model:FindFirstChild("Humanoid") then return end
-
+local function createESP(model, isSpecial)
     -- Không tạo lại nếu đã có
     if model:FindFirstChild("NPC_ESP") then return end
 
-    -- Folder chứa ESP
+    -- Tạo folder chứa ESP
     local folder = Instance.new("Folder")
     folder.Name = "NPC_ESP"
     folder.Parent = model
 
     --------------------------------------------------------
-    -- Xác định màu highlight
+    -- XÁC ĐỊNH MÀU ESP
     --------------------------------------------------------
     local highlightColor
 
-    if isPlayerModel(model) then
-        highlightColor = Color3.fromRGB(0, 255, 0)   -- Player = xanh lá
+    if isSpecial then
+        highlightColor = Color3.fromRGB(255, 255, 0) -- folder NPCs = vàng
+    elseif isPlayerModel(model) then
+        highlightColor = Color3.fromRGB(0, 255, 0) -- player = xanh
     else
-        highlightColor = Color3.fromRGB(255, 50, 50) -- NPC = đỏ
+        highlightColor = Color3.fromRGB(255, 50, 50) -- NPC thường = đỏ
     end
 
     --------------------------------------------------------
@@ -50,66 +51,83 @@ local function createESP(model)
     highlight.Parent = folder
 
     --------------------------------------------------------
-    -- BillboardGui hiển thị distance
+    -- BillboardGui hiển thị distance (chỉ nếu có HRP)
     --------------------------------------------------------
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "DistanceGui"
-    billboard.Size = UDim2.new(0, 100, 0, 25)
-    billboard.AlwaysOnTop = true
-    billboard.Adornee = model.HumanoidRootPart
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.Parent = folder
+    local hrpTarget = model:FindFirstChild("HumanoidRootPart") 
+                    or model:FindFirstChildWhichIsA("BasePart")
 
-    local text = Instance.new("TextLabel")
-    text.BackgroundTransparency = 1
-    text.Size = UDim2.new(1, 0, 1, 0)
-    text.TextColor3 = Color3.fromRGB(255, 255, 255)
-    text.TextStrokeTransparency = 0.3
-    text.Font = Enum.Font.SourceSansBold
-    text.TextScaled = true
-    text.Parent = billboard
+    if hrpTarget then
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "DistanceGui"
+        billboard.Size = UDim2.new(0, 100, 0, 25)
+        billboard.AlwaysOnTop = true
+        billboard.Adornee = hrpTarget
+        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.Parent = folder
 
-    --------------------------------------------------------
-    -- Cập nhật distance liên tục
-    --------------------------------------------------------
-    local conn
-    conn = RunService.RenderStepped:Connect(function()
-        if not model.Parent then
-            conn:Disconnect()
-            return
-        end
-        if not hrp or not hrp.Parent then return end
+        local text = Instance.new("TextLabel")
+        text.BackgroundTransparency = 1
+        text.Size = UDim2.new(1, 0, 1, 0)
+        text.TextColor3 = Color3.fromRGB(255, 255, 255)
+        text.TextStrokeTransparency = 0.3
+        text.Font = Enum.Font.SourceSansBold
+        text.TextScaled = true
+        text.Parent = billboard
 
-        local npcHRP = model:FindFirstChild("HumanoidRootPart")
-        if not npcHRP then return end
+        -- Cập nhật distance
+        local conn
+        conn = RunService.RenderStepped:Connect(function()
+            if not model.Parent then
+                conn:Disconnect()
+                return
+            end
+            if not hrp or not hrp.Parent then return end
 
-        local dist = (hrp.Position - npcHRP.Position).Magnitude
-        text.Text = string.format("%.0f", dist) .. "m"
-    end)
+            local origin = hrpTarget.Position
+            local dist = (hrp.Position - origin).Magnitude
+
+            text.Text = string.format("%.0f", dist) .. "m"
+        end)
+    end
 end
 
 ------------------------------------------------------------
--- ĐỆ QUY LỤC TẤT CẢ CON TRONG WORKSPACE
+-- ĐỆ QUY QUÉT TOÀN MAP
 ------------------------------------------------------------
 local function scan(obj)
     for _, child in ipairs(obj:GetChildren()) do
-        if child:IsA("Model") then
-            if child:FindFirstChild("Humanoid") and child:FindFirstChild("HumanoidRootPart") then
-                createESP(child)
+
+        -- ESP cho folder đặc biệt workspace.NPCs
+        if specialFolder and child:IsDescendantOf(specialFolder) and child:IsA("Model") then
+            createESP(child, true)
+
+        elseif child:IsA("Model") and child:FindFirstChild("Humanoid") then
+            -- NPC hoặc Player có Humanoid
+            if child:FindFirstChild("HumanoidRootPart") then
+                createESP(child, false)
             end
         end
+
         scan(child)
     end
 end
 
 ------------------------------------------------------------
--- BẮT NPC HOẶC PLAYER MỚI
+-- BẮT MODEL MỚI XUẤT HIỆN
 ------------------------------------------------------------
 workspace.DescendantAdded:Connect(function(child)
+
+    -- Nếu là phần tử trong folder đặc biệt
+    if specialFolder and child:IsDescendantOf(specialFolder) and child:IsA("Model") then
+        createESP(child, true)
+        return
+    end
+
+    -- Nếu là NPC có Humanoid
     if child:IsA("Humanoid") then
         local model = child.Parent
         if model and model:FindFirstChild("HumanoidRootPart") then
-            createESP(model)
+            createESP(model, false)
         end
     end
 end)
