@@ -15,9 +15,11 @@ local function isPlayerModel(model)
 end
 
 ------------------------------------------------------------
--- TẠO ESP CHO MODEL (player, npc, hoặc model đặc biệt)
+-- TẠO ESP CHO MODEL (Player hoặc Model trong NPCs)
 ------------------------------------------------------------
-local function createESP(model, isSpecial)
+local function createESP(model, isNPCFolder)
+    if not model or not model.Parent then return end
+
     -- Không tạo lại nếu đã có
     if model:FindFirstChild("NPC_ESP") then return end
 
@@ -31,12 +33,12 @@ local function createESP(model, isSpecial)
     --------------------------------------------------------
     local highlightColor
 
-    if isSpecial then
-        highlightColor = Color3.fromRGB(255, 255, 0) -- folder NPCs = vàng
-    elseif isPlayerModel(model) then
-        highlightColor = Color3.fromRGB(0, 255, 0) -- player = xanh
+    if isNPCFolder then
+        -- Model trong folder NPCs -> đỏ
+        highlightColor = Color3.fromRGB(255, 50, 50)
     else
-        highlightColor = Color3.fromRGB(255, 50, 50) -- NPC thường = đỏ
+        -- Player -> xanh lá
+        highlightColor = Color3.fromRGB(0, 255, 0)
     end
 
     --------------------------------------------------------
@@ -51,9 +53,9 @@ local function createESP(model, isSpecial)
     highlight.Parent = folder
 
     --------------------------------------------------------
-    -- BillboardGui hiển thị distance (chỉ nếu có HRP)
+    -- BillboardGui hiển thị distance (nếu có part để bám)
     --------------------------------------------------------
-    local hrpTarget = model:FindFirstChild("HumanoidRootPart") 
+    local hrpTarget = model:FindFirstChild("HumanoidRootPart")
                     or model:FindFirstChildWhichIsA("BasePart")
 
     if hrpTarget then
@@ -85,55 +87,59 @@ local function createESP(model, isSpecial)
 
             local origin = hrpTarget.Position
             local dist = (hrp.Position - origin).Magnitude
-
             text.Text = string.format("%.0f", dist) .. "m"
         end)
     end
 end
 
 ------------------------------------------------------------
--- ĐỆ QUY QUÉT TOÀN MAP
+-- QUÉT MODEL TRONG FOLDER NPCs
 ------------------------------------------------------------
-local function scan(obj)
-    for _, child in ipairs(obj:GetChildren()) do
+local function scanNPCFolder()
+    if not specialFolder then return end
 
-        -- ESP cho folder đặc biệt workspace.NPCs
-        if specialFolder and child:IsDescendantOf(specialFolder) and child:IsA("Model") then
+    for _, child in ipairs(specialFolder:GetChildren()) do
+        if child:IsA("Model") then
             createESP(child, true)
-
-        elseif child:IsA("Model") and child:FindFirstChild("Humanoid") then
-            -- NPC hoặc Player có Humanoid
-            if child:FindFirstChild("HumanoidRootPart") then
-                createESP(child, false)
-            end
         end
-
-        scan(child)
     end
 end
 
 ------------------------------------------------------------
--- BẮT MODEL MỚI XUẤT HIỆN
+-- ESP PLAYER
 ------------------------------------------------------------
-workspace.DescendantAdded:Connect(function(child)
-
-    -- Nếu là phần tử trong folder đặc biệt
-    if specialFolder and child:IsDescendantOf(specialFolder) and child:IsA("Model") then
-        createESP(child, true)
-        return
+local function setupPlayerESP(plr)
+    if not plr.Character then
+        plr.CharacterAdded:Wait()
     end
 
-    -- Nếu là NPC có Humanoid
-    if child:IsA("Humanoid") then
-        local model = child.Parent
-        if model and model:FindFirstChild("HumanoidRootPart") then
-            createESP(model, false)
+    local char = plr.Character or plr.CharacterAdded:Wait()
+    createESP(char, false)
+
+    plr.CharacterAdded:Connect(function(newChar)
+        createESP(newChar, false)
+    end)
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    setupPlayerESP(plr)
+end
+
+Players.PlayerAdded:Connect(setupPlayerESP)
+
+------------------------------------------------------------
+-- BẮT MODEL MỚI THÊM VÀO FOLDER NPCs
+------------------------------------------------------------
+if specialFolder then
+    specialFolder.ChildAdded:Connect(function(child)
+        if child:IsA("Model") then
+            createESP(child, true)
         end
-    end
-end)
+    end)
+end
 
 ------------------------------------------------------------
 -- QUÉT BAN ĐẦU
 ------------------------------------------------------------
 task.wait(1)
-scan(workspace)
+scanNPCFolder()
